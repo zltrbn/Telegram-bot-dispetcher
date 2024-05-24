@@ -1,14 +1,26 @@
-import openai
+from openai import OpenAI
 #from datetime import datetime
 import speech_recognition as sr
 
 from aiogram import F
 from aiogram.types import Voice
 import soundfile
-import config
+from typing import List
+from pydantic import BaseModel
 import json
+import config
 
 from static_vars import static_vars
+
+client = OpenAI(
+    api_key=config.NEURO_TOKEN,
+)
+
+class EnquetAIResponse(BaseModel):
+    Номер_объекта: str
+    Адрес_объекта: str
+    Проведенные_работы: str
+    Необходимые_материалы: str
 
 @static_vars(counter=0)
 async def save_voice_as_wav(voice: Voice, id):
@@ -35,86 +47,32 @@ async def voice_to_text(path_name):
     except:
         print("speech error")
         return None
-    
     return text
 
-def beauty_json(s):
-    fields = ["Номер объекта", "Адрес объекта", "Проведенные работы", "Необходимые материалы"]
-    lines = s.split('\n')
-    ans = "{\n"
-    for line in lines:
-        for i, field in enumerate(fields):
-            if field in line:
-                if line.count(':') != 1:
-                    continue
-                key, value = line.split(':')
-                if not key or not value:
-                    continue
-
-                key = key.strip()
-                if key and key[0] != '"':
-                    key = '"' + key
-                if key and key[-1] != '"':
-                    key += '"'
-
-                value = value.strip().strip(',')
-                if value and value[0] != '"':
-                    value = '"' + value
-                if value and value[-1] != '"':
-                    value += '"'
-
-                ans += key + ':' + value
-                if i != len(fields) - 1:
-                    ans += ','
-                ans += '\n'
-    ans += "}\n"
-    return ans    
-
-def parse_json(s):
-    return json.loads(str(s))
-
-def save_json_to_file(data, path):
-    with open(path, mode = "w") as file:
-        file.write(json.dumps(data))
-
-def load_from_file(path):
-    with open(path) as file:
-        return json.loads(file.read())
-
-async def neuro_answer(request, PATH):
-    
-    openai.api_key = config.NEURO_TOKEN
-
-    question = request + "\nЗаполни пожалуйста следующую информацию:\
-        \nНомер объекта:\
-        \nАдрес объекта:\
-        \nПроведенные работы:\
-        \nНеобходимые материалы(в формате кабель канал 10*10 или кроб 10*10):\
-        \nОформи, пожалуйста, ответ обязательно в виде словаря в формате json, если какой-то информации не хватает, напиши что это не указано"
-    print(request)
+async def neuro_answer(request):
     try:
-        response = openai.completions.create(model="gpt-3.5-turbo-instruct", prompt=question, max_tokens=2000)
+        response = client.chat.completions.create(model="gpt-4-0613",
+        messages=[
+       {"role": "user", "content": request}
+    ],
+    functions=[
+        {
+          "name": "get_answer_for_user_query",
+          "description": "Заполни анкету, если какой-то информации не хватает, укажи None",
+          "parameters": EnquetAIResponse.schema()
+        }
+    ],
+    function_call={"name": "get_answer_for_user_query"}
+)
+    
+        answer = json.loads(response.choices[0].message.function_call.arguments)
+        print(request)
     except:
         print("chat gpt is not avaible")
         return None
-    
-    ans = response.choices[0].text
-    ans = beauty_json(ans)
-    print(ans)
 
-    try:
-        data = parse_json(ans)
-    except:
-        print("parse json error")
-        return None
+    if answer["Номер_объекта"] == "None" or answer["Адрес_объекта"] == "None":
+        return f'Обязательно укажите в своем голосовом сообщении номер и адрес объекта'
+    else:
+        return answer
     
-    save_json_to_file(data, PATH)
-    
-    ans = ""
-    request = ""
-    for key, value in data.items():
-        request = str(key) + ": " + str(value) + "\n"
-        ans += request
-
-    print(ans)
-    return(ans)
