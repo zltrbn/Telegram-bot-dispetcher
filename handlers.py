@@ -7,6 +7,8 @@ import utils
 router = Router()
 
 JSON = {}
+Action = {}
+Number = {}
 
 @router.message(Command("start"))
 async def start_handler(msg: Message):
@@ -20,6 +22,7 @@ async def start_handler(msg: Message):
 async def process_voice_message(message: Message):
 
     global JSON
+    global Number
 
     voice_path = await utils.save_voice_as_wav(message.voice, message.chat.id)
     texto = await utils.voice_to_text(voice_path)
@@ -35,12 +38,15 @@ async def process_voice_message(message: Message):
         await message.answer(text=ans)
         return 0 
 
-    JSON = ans
+    JSON[message.chat.id] = ans
+    
+    if Number.get(message.chat.id) is None:
+        Number[message.chat.id] = 0
 
     answer = ""
     request = ""
     for key, value in ans.items():
-        request = str(key) + ": " + str(value) + "\n"
+        request = str(key).replace('_', ' ') + ": " + str(value) + "\n"
         answer += request
 
     kb = [[KeyboardButton(text='Все в порядке')], [KeyboardButton(text='Изменить введенные параметры')]]
@@ -51,37 +57,66 @@ async def process_voice_message(message: Message):
 @router.message(F.text == 'Все в порядке')
 async def good_ans(Message):
     
-    print(JSON)
+    global Number
 
-    with open(f"json_files/id{Message.chat.id}.json", mode = "w") as file:
-        file.write(json.dumps(JSON))
+    tech_data = JSON.get(Message.chat.id)
+    if tech_data is None:
+        await Message.answer("Запишите, пожалуйста, голосовое сообщение")
+        return 0
+
+    Number[Message.chat.id] += 1
+    c = Number[Message.chat.id] 
+
+    with open(f"json_files/{c}-id{Message.chat.id}.json", mode = "w") as file:
+        file.write(json.dumps(tech_data))
+
+    JSON.pop(Message.chat.id)
 
     await Message.reply("Спасибо, хорошего дня!")
 
-@router.message(F.text == 'Изменить введенные параметры')
+@router.message(F.text.in_({'Изменить введенные параметры', 'Отменить'}))
 async def bad_ans(Message):
-    await Message.answer("Пожалуйста, введите название поля и исправленные данные в следующем формате:\nПоле\nНовые данные")
+    if Action.get(Message.chat.id) is not None:
+        Action.pop(Message.chat.id)
 
+    kb = [[KeyboardButton(text='Номер объекта')], [KeyboardButton(text='Адрес объекта')], [KeyboardButton(text='Проведенные работы')], [KeyboardButton(text='Необходимые материалы')]]
+    keyboar = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=True)
+
+    await Message.reply(text="Выберите поле для изменения", reply_markup=keyboar)
+
+@router.message(F.text.in_({'Номер объекта', 'Адрес объекта', 'Проведенные работы', 'Необходимые материалы'}))
+async def change(Message):
+
+    global Action
+
+    Action[Message.chat.id] = Message.text.replace(' ', '_')
+
+    kb = [[KeyboardButton(text='Отменить')]]
+    keyboar = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=True)
+
+    await Message.reply(text="Введите новые данные", reply_markup=keyboar)
+    
 @router.message(F.text)
 async def change_ans(Message):
-    try:
-        name = Message.text.split("\n")
-    except:
+
+    ac_data = Action.get(Message.chat.id)
+    if ac_data is None:
         await Message.answer("Пожалуйста, следуйте инструкции внимательнее")
         return 0
 
-    if name[0] not in JSON.keys():
-        await Message.answer("пожалуйста, следуйте инструкциям внимательнее")
+    tech_data = JSON.get(Message.chat.id)
+    if tech_data is None:
+        await Message.answer("Запишите, пожалуйста, голосовое сообщение")
         return 0
 
-    for key in JSON.keys():
-        if key == name[0]:
-            JSON[key] = name[1]
+    tech_data[ac_data] = Message.text
+
+    Action.pop(Message.chat.id)
 
     answer = ""
     request = ""
-    for key, value in JSON.items():
-        request = str(key) + ": " + str(value) + "\n"
+    for key, value in tech_data.items():
+        request = str(key).replace('_', ' ') + ": " + str(value) + "\n"
         answer += request
 
     kb = [[KeyboardButton(text='Все в порядке')], [KeyboardButton(text='Изменить введенные параметры')]]
