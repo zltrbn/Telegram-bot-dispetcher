@@ -7,6 +7,7 @@ import utils
 router = Router()
 
 JSON = {}
+data_message = {}
 Action = {}
 Number = {}
 
@@ -23,14 +24,20 @@ async def process_voice_message(message: Message):
 
     global JSON
     global Number
+    global data_message
 
     voice_path = await utils.save_voice_as_wav(message.voice, message.chat.id)
     texto = await utils.voice_to_text(voice_path)
     if texto is None:
         await message.answer(text="Не удалось распознать речь, попробуйте еще раз")
-        return 0 
-    #json_path = voice_path.replace('voice_files', 'json_files').replace('wav', 'json')
-    ans = await utils.neuro_answer(texto) 
+        return 0
+
+    if data_message.get(message.chat.id) is None:
+        data_message[message.chat.id] = texto
+    else:
+        data_message[message.chat.id] += " " + texto
+
+    ans = await utils.neuro_answer(data_message[message.chat.id]) 
     if ans is None:
         await message.answer(text="Не удается определить записанное сообщение. Пожалуйста, повторите")
         return 0 
@@ -49,7 +56,7 @@ async def process_voice_message(message: Message):
         request = str(key).replace('_', ' ') + ": " + str(value) + "\n"
         answer += request
 
-    kb = [[KeyboardButton(text='Все в порядке')], [KeyboardButton(text='Изменить введенные параметры')]]
+    kb = [[KeyboardButton(text='Все в порядке')], [KeyboardButton(text='Изменить введенные параметры')], [KeyboardButton(text='Продолжить вводить голосовые сообщения')]]
     keyboar = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=True)
 
     await message.reply(text=f"{answer}\nТехник: id{message.chat.id}", reply_markup=keyboar)
@@ -71,8 +78,13 @@ async def good_ans(Message):
         file.write(json.dumps(tech_data))
 
     JSON.pop(Message.chat.id)
+    data_message.pop(Message.chat.id)
 
     await Message.reply("Спасибо, хорошего дня!")
+
+@router.message(F.text == 'Продолжить вводить голосовые сообщения')
+async def gc(Message):
+    await Message.reply(text="Уточните информацию в голосовом сообщении")
 
 @router.message(F.text.in_({'Изменить введенные параметры', 'Отменить'}))
 async def bad_ans(Message):

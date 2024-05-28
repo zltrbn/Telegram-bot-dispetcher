@@ -51,14 +51,16 @@ async def voice_to_text(path_name):
 
 async def neuro_answer(request):
     try:
-        response = client.chat.completions.create(model="gpt-4-0613",
+        response = client.chat.completions.create(model="gpt-3.5-turbo-0613",
         messages=[
        {"role": "user", "content": request}
     ],
     functions=[
         {
           "name": "get_answer_for_user_query",
-          "description": "Заполни анкету, если какой-то информации не хватает, укажи None",
+          "description": "Заполни анкету, обычно она присылается в следующем виде: Номер объекта 61277 адрес объекта Красноярский рабочий 99 \
+             произведенные работы обследование необходимые материалы смк102-502 одна штука кс4 одна штука кспв четыре на ноль точка пять три метра \
+            Если какой-то информации не хватает, укажи None",
           "parameters": EnquetAIResponse.schema()
         }
     ],
