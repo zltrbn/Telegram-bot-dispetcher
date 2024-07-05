@@ -9,7 +9,8 @@ router = Router()
 JSON = {}
 data_message = {}
 Action = {}
-Number = {}
+Number1 = {}
+Number2 = {}
 
 @router.message(Command("start"))
 async def start_handler(msg: Message):
@@ -23,7 +24,8 @@ async def start_handler(msg: Message):
 async def process_voice_message(message: Message):
 
     global JSON
-    global Number
+    global Number1
+    global Number2
     global data_message
 
     voice_path = await utils.save_voice_as_wav(message.voice, message.chat.id)
@@ -47,8 +49,11 @@ async def process_voice_message(message: Message):
 
     JSON[message.chat.id] = ans
     
-    if Number.get(message.chat.id) is None:
-        Number[message.chat.id] = 0
+    if Number1.get(message.chat.id) is None:
+        Number1[message.chat.id] = 0
+
+    if Number2.get(message.chat.id) is None:
+        Number2[message.chat.id] = 0
 
     answer = ""
     request = ""
@@ -64,27 +69,39 @@ async def process_voice_message(message: Message):
 @router.message(F.text == 'Все в порядке')
 async def good_ans(Message):
     
-    global Number
+    global Number1
 
     tech_data = JSON.get(Message.chat.id)
     if tech_data is None:
         await Message.answer("Запишите, пожалуйста, голосовое сообщение")
         return 0
 
-    Number[Message.chat.id] += 1
-    c = Number[Message.chat.id] 
+    Number1[Message.chat.id] += 1
+    c = Number1[Message.chat.id] 
 
-    with open(f"json_files/{c}-id{Message.chat.id}.json", mode = "w") as file:
+    name = f"json_files/{c}-id{Message.chat.id}.json"
+
+    with open(f"{name}", mode = "w") as file:
         file.write(json.dumps(tech_data))
+
+    l = JSON[Message.chat.id]['Необходимые_материалы'].split(',')
+
+    try:
+        await utils.get_embedding(l, name)
+    except:
+        await Message.answer(text="Не удается определить записанное сообщение. Пожалуйста, повторите")
+        print("chat gpt isn't avaible")
+        return 0 
 
     JSON.pop(Message.chat.id)
     data_message.pop(Message.chat.id)
+    Number2.pop(Message.chat.id)
 
-    await Message.reply("Спасибо, хорошего дня!")
+    await Message.reply("Спасибо, не забудьте отправить фото акта")
 
 @router.message(F.text == 'Продолжить вводить голосовые сообщения')
 async def gc(Message):
-    await Message.reply(text="Уточните информацию в голосовом сообщении")
+    await Message.reply(text="Уточните недостающую информацию в голосовом сообщении")
 
 @router.message(F.text.in_({'Изменить введенные параметры', 'Отменить'}))
 async def bad_ans(Message):
@@ -136,7 +153,21 @@ async def change_ans(Message):
 
     await Message.reply(text=f"{answer}\nТехник: id{Message.chat.id}", reply_markup=keyboar)
 
+@router.message(F.content_type == "photo")
+async def photo(message):
 
+    global Number2
 
-    
+    if Number2.get(message.chat.id) is None:
+        Number2[message.chat.id] = 0
+
+    Number2[message.chat.id] += 1
+    c = Number2[message.chat.id] 
+
+    photo = message.photo[-1]
+    path_name = f"photo_files/{c}-id{message.chat.id}.jpeg"
+    voice_file_info = await photo.bot.get_file(photo.file_id)
+    await photo.bot.download_file(voice_file_info.file_path, path_name)
+
+    await message.answer("Спасибо, фото сохранено")
 

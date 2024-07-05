@@ -9,6 +9,9 @@ from typing import List
 from pydantic import BaseModel
 import json
 import config
+import pandas as pd
+from scipy.spatial.distance import cosine
+import numpy as np
 
 from static_vars import static_vars
 
@@ -21,6 +24,11 @@ class EnquetAIResponse(BaseModel):
     Адрес_объекта: str
     Проведенные_работы: str
     Необходимые_материалы: str
+
+
+def get(text, model="text-embedding-ada-002"):
+    text = text.replace("\n", " ")
+    return client.embeddings.create(input=[text], model=model).data[0].embedding
 
 @static_vars(counter=0)
 async def save_voice_as_wav(voice: Voice, id):
@@ -58,8 +66,9 @@ async def neuro_answer(request):
     functions=[
         {
           "name": "get_answer_for_user_query",
-          "description": "Заполни анкету, обычно она присылается в следующем виде: Номер объекта 61277 адрес объекта Красноярский рабочий 99 \
-             произведенные работы обследование необходимые материалы смк102-502 одна штука кс4 одна штука кспв четыре на ноль точка пять три метра \
+          "description": "Заполни анкету, обычно она присылается в следующем виде: Номер объекта адрес объекта \
+             произведенные работы обследование необходимые материалы смк102-502 одна штука, кс4 одна штука, кспв четыре на ноль точка пять три метра \
+            Необходимые материалы укажи через запятую. \
             Если какой-то информации не хватает, укажи None",
           "parameters": EnquetAIResponse.schema()
         }
@@ -77,4 +86,21 @@ async def neuro_answer(request):
         return f'Обязательно укажите в своем голосовом сообщении номер и адрес объекта'
     else:
         return answer
+
+
+async def get_embedding(ar, f):
+    df = pd.read_csv("datas.csv")
+
+    df['embedding'] = df.Syn.apply(lambda x: get(x, model='text-embedding-ada-002'))
+    df.to_csv("new_data.csv")
+
+    with open(f"{f}", mode = "a") as file:
+        for _, text in enumerate(ar):
+            print(text)
+            text_emb = get(text, model='text-embedding-ada-002')
+            score = df.embedding.apply(lambda x: cosine(x, text_emb)).to_list()
+            print(score)
+            file.write("\n")
+            print(f"{text}-{df['Id'][np.argmin(score)]}")
+            file.write(f"{text}-{df['Id'][np.argmin(score)]}")
     
